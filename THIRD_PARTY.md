@@ -4,7 +4,6 @@
 - **Newsreader, IBM Plex Sans et IBM Plex Mono** : polices sous SIL Open Font License 1.1 (© 2020 The Newsreader Project Authors ; © 2017–2019 IBM Corp.). Fichiers WOFF2 servis localement depuis `src/fonts/`, sans requête vers un service de polices. Licences complètes dans `public/licenses/` (`Newsreader-OFL.txt`, `IBM-Plex-Sans-OFL.txt`, `IBM-Plex-Mono-OFL.txt`), copiées dans le site compilé.
 - **Lucide** : icônes, licence ISC.
 - **React, Vite** : licence MIT.
-- **Animations d'apparition du titre** : composant `texts reveal` du skill transitions.dev disponible dans l'environnement de développement ; variables et garde `prefers-reduced-motion` conservées.
 - **Python** : pandas, NumPy, scikit-learn (BSD), PyArrow (Apache 2.0), requests (Apache 2.0), pytest (MIT).
 
 Le projet a été développé avec une assistance IA. Aucun actif privé d'entreprise ni donnée personnelle du propriétaire n'est utilisé dans l'application.

@@ -1,32 +1,48 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/readme/gridpulse-dark.png">
+  <img alt="Application GridPulse : consommation et production d'électricité en France, avec indicateurs du mois et courbe horaire" src=".github/readme/gridpulse-light.png">
+</picture>
+
 # GridPulse
 
-**L'électricité française, en perspective.** Un observatoire interactif qui relie collecte de données, qualité, séries temporelles et visualisation.
+La consommation et la production d'électricité en France, heure par heure, sur 2023 et 2024, à partir des données publiques de RTE. GridPulse compare aussi une prévision à 24 heures à une référence simple, sur une période que le modèle n'a jamais vue.
 
-[Ouvrir la démo](https://badreddine05.github.io/gridpulse/) · [Portfolio](https://badreddine05.github.io/) · [Source RTE](https://odre.opendatasoft.com/explore/dataset/eco2mix-national-cons-def/)
-
-GridPulse explore **2023–2024**, à partir des données publiques de RTE. Il montre la consommation horaire, le mix électrique, les pointes annuelles et une prévision à 24 heures évaluée sur une période distincte de l'entraînement. La démo fonctionne sur un instantané embarqué : elle ne prétend pas suivre le réseau en direct.
+**[Ouvrir l'application](https://badreddine05.github.io/gridpulse/)** · [Lire l'étude de cas](https://badreddine05.github.io/projets/gridpulse/) · [Source RTE](https://odre.opendatasoft.com/explore/dataset/eco2mix-national-cons-def/)
 
 ## Ce que l'on peut faire
 
-- Filtrer les indicateurs par année et par mois, puis explorer chaque journée à l'heure de Paris.
-- Lire une journée avec une animation contrôlable ; le mix de production suit l'heure sélectionnée.
-- Cliquer dans le calendrier annuel pour retrouver une pointe et sa courbe.
-- Comparer consommation observée, prévision et référence hebdomadaire sur le test de novembre–décembre 2024.
-- Afficher les résultats réels du modèle, y compris l'insuffisance de couverture de son intervalle.
+L'application fonctionne sur un instantané historique embarqué : elle ne suit pas le réseau en direct, et elle n'a besoin ni de compte, ni de clé d'API, ni de serveur.
+
+- Choisir une année et un mois, puis lire la consommation, la pointe, la part renouvelable et l'intensité carbone de la période.
+- Parcourir une journée heure par heure, à l'heure de Paris, et la rejouer en animation ; le mix de production suit l'heure choisie.
+- Cliquer dans le calendrier annuel pour retrouver une journée de pointe et sa courbe.
+- Comparer, sur la période de test de novembre et décembre 2024, la consommation observée, la prévision et la référence.
 - Exporter les données filtrées en CSV et consulter la provenance, les contrôles et les définitions.
 
-L'interface est en français, adaptative, utilisable au clavier et respecte `prefers-reduced-motion`. Les polices sont embarquées. Aucun compte, secret, service payant ou appel API n'est nécessaire pour utiliser la démo.
+## Ce que montrent les données
 
-## Démarrage rapide
+- Les pointes annuelles tombent en janvier, à 19 h : 83,3 GW le 23 janvier 2023 et 85,3 GW le 10 janvier 2024.
+- Le nucléaire fournit 65 % de la production retenue en 2023 et 67 % en 2024.
+- Sur 1 389 heures de test, le modèle commet une erreur absolue moyenne de 2 710 MW, contre 4 961 MW pour la référence (même heure, une semaine plus tôt), soit 45,4 % de moins.
+- L'intervalle annoncé à 90 % ne contient que 47,37 % des observations de test. Il a été calibré sur septembre et octobre, des mois plus calmes que l'hiver ; ce défaut reste visible dans l'application.
 
-Prérequis : **Node.js 22.12+** (ou 24) et npm. L'instantané public est versionné, donc Python n'est pas requis pour ouvrir le site.
+| Indicateur sur le test | Gradient boosting | Référence |
+| --- | ---: | ---: |
+| MAE | 2 709,55 MW | 4 960,96 MW |
+| RMSE | 3 539,45 MW | 5 742,04 MW |
+
+Ce résultat porte sur un seul hiver et ne garantit rien pour une autre période.
+
+## Lancer le projet
+
+Il faut Node.js 22.12 ou plus récent. L'instantané public est versionné : Python n'est pas nécessaire pour ouvrir le site.
 
 ```sh
 npm ci
 npm run dev
 ```
 
-Ouvrir l'URL indiquée par Vite, normalement `http://127.0.0.1:5174`.
+Ouvrez l'adresse affichée par Vite, en général `http://127.0.0.1:5174`. Pour la version de production :
 
 ```sh
 npm test
@@ -34,108 +50,64 @@ npm run build
 npm run preview
 ```
 
-`dist/` contient un site statique, compatible avec GitHub Pages et les hébergements sous-chemin grâce à `base: './'`.
-
-### Docker
+`dist/` est un site statique, compatible avec GitHub Pages et les sous-chemins (`base: './'`). Une image Docker sert le site avec Nginx :
 
 ```sh
 docker build -t gridpulse .
 docker run --rm -p 8080:80 gridpulse
 ```
 
-Le conteneur sert l'application compilée avec Nginx. Le pipeline Python reste une étape de préparation distincte.
-
 ## Reproduire les données et le modèle
 
-Prérequis : Python **3.13**. Le téléchargement contient environ 35 000 observations ; le fichier brut et les sorties Parquet/SQLite restent hors Git.
+Il faut Python 3.13. La source compte environ 35 000 observations demi-horaires ; le fichier brut et les sorties Parquet et SQLite restent hors de Git.
 
 ```sh
 python -m venv .venv
-# Linux/macOS
-. .venv/bin/activate
-# Windows PowerShell : .venv\Scripts\Activate.ps1
+. .venv/bin/activate        # Windows PowerShell : .venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 python pipeline/build_dataset.py
 python -m pytest tests/test_pipeline.py -q
 ```
 
-Le pipeline réutilise le cache `data/raw/rte-2023-2024.json`. Utiliser `--refresh` pour retélécharger la source. Une nouvelle version de la source peut modifier le checksum et les résultats : le manifeste permet de l'identifier.
+Le pipeline réutilise le cache `data/raw/rte-2023-2024.json` ; `--refresh` force un nouveau téléchargement. Une nouvelle version de la source peut changer l'empreinte et les résultats, ce que le manifeste permet de repérer.
 
-Sorties :
+| Sortie | Contenu |
+| --- | --- |
+| `data/processed/electricity_hourly.parquet` | Table horaire typée |
+| `data/processed/gridpulse.sqlite` | Table et vues SQL journalières, mensuelles et d'erreurs |
+| `data/processed/electricity_hourly.csv` | Export complet |
+| `data/manifest.json` | Provenance, empreinte SHA-256, contrôles et métriques |
+| `public/data/gridpulse.json` | Données compactes servies par l'application |
 
-- `data/processed/electricity_hourly.parquet` : table horaire typée ;
-- `data/processed/gridpulse.sqlite` : table et vues SQL journalières, mensuelles et d'erreurs ;
-- `data/processed/electricity_hourly.csv` : export complet ;
-- `data/manifest.json` : provenance, empreinte SHA-256, contrôles et métriques ;
-- `public/data/gridpulse.json` : données compactes servies par le site.
+## Pour les développeurs
 
-## Architecture
+Les calculs lourds restent en Python et en SQL. Le navigateur ne réentraîne aucun modèle : il filtre les mesures, recalcule les agrégats et affiche les prévisions déjà calculées.
 
-```mermaid
-flowchart LR
-    A[API publique RTE / ODRÉ] --> B[Cache brut + SHA-256]
-    B --> C[Contrôles et agrégation horaire UTC]
-    C --> D[Parquet + SQLite / SQL]
-    C --> E[Variables disponibles à l'origine]
-    E --> F[Entraînement / calibration / test]
-    D --> G[Instantané JSON]
-    F --> G
-    G --> H[React + graphiques SVG interactifs]
-```
+| Chemin | Rôle |
+| --- | --- |
+| `pipeline/build_dataset.py` | Collecte, validation, stockage et prévision |
+| `sql/analytics.sql` | Vues analytiques documentées |
+| `src/data.mjs` | Calculs et transformations côté interface |
+| `src/main.jsx`, `src/style.css` | Interface React et graphiques SVG |
+| `tests/` | Invariants métier et tests contre les fuites de données futures |
+| `docs/` | [Conventions de données](docs/DATA.md) et [fiche du modèle](docs/MODEL.md) |
 
-Le calcul analytique reste en Python et SQL. Le navigateur ne réentraîne pas de modèle : il filtre les mesures, recalcule les agrégats et présente les résultats pré-calculés. Cette séparation rend la démo rapide, vérifiable et hébergeable sans backend.
-
-## Résultats réellement mesurés
-
-Sur **1 389 heures valides de test**, du 4 novembre au 31 décembre 2024 (instants exacts dans le manifeste) :
-
-| Indicateur | Gradient boosting | Référence, même heure une semaine avant |
-|---|---:|---:|
-| MAE | 2 709,55 MW | 4 960,96 MW |
-| RMSE | 3 539,45 MW | 5 742,04 MW |
-
-Le modèle réduit la MAE d'environ **45,4 % sur ce test**. Ce résultat ne constitue pas une garantie pour d'autres années.
-
-L'intervalle calibré à un niveau nominal de 90 % ne couvre que **47,37 %** des observations de test. Ce défaut reste visible dans l'application. La calibration sur septembre–octobre ne représente pas correctement les erreurs hivernales ; les dépendances temporelles limitent également les garanties d'une calibration par quantile. Le projet montre cette limite, sans élargir l'intervalle après observation du test pour embellir le résultat.
+Les tests Python vérifient l'intégration des MW en MWh, le traitement des doublons contradictoires et des valeurs absentes, la séparation temporelle et l'absence d'observation future dans les variables. Les tests JavaScript vérifient les agrégats, la pondération carbone, l'export CSV et le calendrier. GitHub Actions les exécute avec le build à chaque push.
 
 ## Qualité et limites des données
 
-- **35 088 lignes source**, **35 084 instants distincts**, **17 544 heures** dans l'axe temporel.
-- Quatre doublons de changement d'heure au printemps sont supprimés **uniquement lorsque toutes les mesures sont identiques**. Des valeurs contradictoires font échouer le traitement.
-- Deux heures manquantes à l'automne sont conservées comme valeurs absentes. Aucune interpolation de la cible n'est effectuée. Les variables retardées propagent ces exclusions dans la calibration et le test.
-- Une moyenne horaire n'est produite que si ses deux mesures demi-horaires sont présentes, pour chaque variable.
-- L'intensité carbone est celle de la **production** selon la méthode RTE, pas une empreinte de consommation ni une analyse de cycle de vie.
-- Les échanges internationaux et le pompage sont exclus du mix présenté. Les parts décrivent la production des huit filières retenues.
-- Le modèle suppose les mesures disponibles dès la fin de leur heure ; les délais réels de publication ne sont pas simulés.
+- 35 088 lignes source, 35 084 instants distincts et 17 544 heures dans la série finale.
+- Quatre doublons du changement d'heure de printemps ne sont retirés que si toutes leurs mesures sont identiques ; une contradiction arrête le traitement.
+- Deux heures manquantes à l'automne restent vides : la variable à prévoir n'est jamais interpolée.
+- L'intensité carbone est celle de la production, selon la méthode RTE. Les échanges internationaux et le pompage sont exclus du mix présenté.
+- Le modèle suppose chaque mesure disponible dès la fin de son heure ; les délais réels de publication ne sont pas simulés.
 
-Voir [les conventions de données](docs/DATA.md) et [la fiche du modèle](docs/MODEL.md).
+## Données, licences et crédits
 
-## Structure
+Données : RTE, éCO2mix national consolidé et définitif, via ODRÉ, sous [Licence Ouverte Etalab 2.0](https://www.etalab.gouv.fr/licence-ouverte-open-licence/). Code sous licence [MIT](LICENSE). Polices Newsreader, IBM Plex Sans et IBM Plex Mono (SIL OFL 1.1), dont les licences sont dans [`public/licenses/`](public/licenses/) ; autres composants dans [THIRD_PARTY.md](THIRD_PARTY.md).
 
-```text
-pipeline/build_dataset.py  Collecte, validation, stockage et prévision
-sql/analytics.sql         Vues analytiques documentées
-src/data.mjs              Calculs et transformations de l'interface
-src/main.jsx              Exploration, prévisions et provenance
-src/style.css             Design adaptatif et animations
-tests/                    Invariants métier et tests anti-fuite
-public/data/              Instantané public reproductible
-data/manifest.json        Traçabilité du fichier source
-docs/                     Méthode, modèle et guide d'entretien
-```
+Projet personnel de [Badreddine Channoufi](https://badreddine05.github.io/), réalisé avec l'aide d'outils d'IA. Les années 2023 et 2024 désignent les données, pas la date de réalisation du projet.
 
-## Vérification
+## In English
 
-Les tests Python vérifient l'intégration MW → MWh, les doublons contradictoires, les valeurs absentes, la séparation temporelle et l'absence d'observations futures dans les variables. Les tests JavaScript vérifient les agrégats, la pondération carbone, l'export CSV, le calendrier et la cohérence de l'instantané. GitHub Actions exécute ces tests et le build à chaque push et pull request.
-
-## Présenter le projet
-
-[Le guide d'entretien](docs/INTERVIEW.md) propose un parcours de démonstration, les décisions techniques à expliquer et les limites à connaître. Une formulation CV possible, à utiliser après appropriation du code :
-
-> Observatoire de l'électricité française : pipeline Python/SQL sur les données RTE, contrôles de qualité, prévision à 24 h évaluée chronologiquement et application React avec visualisations interactives.
-
-## Auteur et licences
-
-Projet personnel de **Badreddine Channoufi**, développé avec assistance IA. Le code est sous licence MIT ; les données RTE sont sous Licence Ouverte Etalab 2.0. Voir [THIRD_PARTY.md](THIRD_PARTY.md). Les dates 2023–2024 désignent les données, pas la date de réalisation du projet.
-
-Les polices DM Sans et Space Grotesk proviennent des paquets Fontsource et sont servies localement. Leurs notices SIL Open Font License 1.1 sont copiées sans modification dans [DM-Sans-OFL.txt](public/licenses/DM-Sans-OFL.txt) et [Space-Grotesk-OFL.txt](public/licenses/Space-Grotesk-OFL.txt), puis incluses dans le site compilé.
+GridPulse is a browser observatory of French electricity demand and generation in 2023 and 2024, built on RTE open data. A Python pipeline checks and stores the data in Parquet and SQLite and trains a 24-hour forecast, evaluated chronologically on eight weeks it never saw. On that test the model cuts the mean absolute error of a seasonal baseline by 45.4 %, while its 90 % interval only covers 47 % of observations, a weakness the app shows openly.
