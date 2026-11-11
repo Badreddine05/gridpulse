@@ -137,3 +137,5 @@ Les tests Python vérifient l'intégration MW → MWh, les doublons contradictoi
 ## Auteur et licences
 
 Projet personnel de **Badreddine Channoufi**, développé avec assistance IA. Le code est sous licence MIT ; les données RTE sont sous Licence Ouverte Etalab 2.0. Voir [THIRD_PARTY.md](THIRD_PARTY.md). Les dates 2023–2024 désignent les données, pas la date de réalisation du projet.
+
+Les polices DM Sans et Space Grotesk proviennent des paquets Fontsource et sont servies localement. Leurs notices SIL Open Font License 1.1 sont copiées sans modification dans [DM-Sans-OFL.txt](public/licenses/DM-Sans-OFL.txt) et [Space-Grotesk-OFL.txt](public/licenses/Space-Grotesk-OFL.txt), puis incluses dans le site compilé.
