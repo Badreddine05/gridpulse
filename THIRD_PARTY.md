@@ -1,7 +1,7 @@
 # Sources et licences
 
 - **Données : RTE, éCO2mix nationales consolidées et définitives**, plateforme ODRÉ. Source : https://odre.opendatasoft.com/explore/dataset/eco2mix-national-cons-def/. Réutilisation sous **Licence Ouverte / Open Licence Etalab 2.0** : https://www.etalab.gouv.fr/licence-ouverte-open-licence/. Le fichier JSON embarqué contient des agrégations et prédictions produites par ce projet ; les mesures d'origine restent attribuées à RTE. Empreinte du téléchargement dans `data/manifest.json`.
-- **DM Sans et Space Grotesk** : polices distribuées par Fontsource, SIL Open Font License 1.1. Polices servies localement, sans requête Google Fonts. Licences complètes incluses dans les packages `@fontsource/*`.
+- **Newsreader, IBM Plex Sans et IBM Plex Mono** : polices sous SIL Open Font License 1.1 (© 2020 The Newsreader Project Authors ; © 2017–2019 IBM Corp.). Fichiers WOFF2 servis localement depuis `src/fonts/`, sans requête vers un service de polices. Licences complètes dans `public/licenses/` (`Newsreader-OFL.txt`, `IBM-Plex-Sans-OFL.txt`, `IBM-Plex-Mono-OFL.txt`), copiées dans le site compilé.
 - **Lucide** : icônes, licence ISC.
 - **React, Vite** : licence MIT.
 - **Animations d'apparition du titre** : composant `texts reveal` du skill transitions.dev disponible dans l'environnement de développement ; variables et garde `prefers-reduced-motion` conservées.

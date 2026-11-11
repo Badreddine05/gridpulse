@@ -1,47 +1,23 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import "./tokens.css";
+import React, {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { createRoot } from "react-dom/client";
 import {
-  Zap,
-  Activity,
-  ChartNoAxesCombined,
-  Database,
   ArrowUpRight,
-  ArrowDownRight,
-  ArrowRight,
-  Download,
-  ChevronDown,
-  ChevronRight,
-  Play,
-  Pause,
-  RotateCcw,
-  CalendarDays,
-  Wind,
-  Leaf,
-  FlaskConical,
   Check,
-  ExternalLink,
-  Info,
-  Menu,
-  X,
-  Github,
-  Sun,
-  Moon,
-  Radio,
-  Layers,
-  ShieldCheck,
-  Clock,
-  Target,
+  ChevronDown,
+  Download,
+  Pause,
+  Play,
+  RotateCcw,
 } from "lucide-react";
-import "@fontsource/dm-sans/400.css";
-import "@fontsource/dm-sans/500.css";
-import "@fontsource/dm-sans/600.css";
-import "@fontsource/dm-sans/700.css";
-import "@fontsource/space-grotesk/400.css";
-import "@fontsource/space-grotesk/500.css";
-import "@fontsource/space-grotesk/600.css";
 import {
   MONTHS,
-  FUELS,
   fmt,
   powerToGw as gw,
   avg,
@@ -53,75 +29,279 @@ import {
 } from "./data.mjs";
 import "./style.css";
 
+const NB = "\u00a0";
 const DATE_FMT = new Intl.DateTimeFormat("fr-FR", {
   day: "numeric",
   month: "long",
   year: "numeric",
   timeZone: "UTC",
 });
+const SHORT_DATE_FMT = new Intl.DateTimeFormat("fr-FR", {
+  day: "numeric",
+  month: "short",
+  timeZone: "UTC",
+});
+const MONTH_SHORT_FMT = new Intl.DateTimeFormat("fr-FR", {
+  month: "short",
+  timeZone: "UTC",
+});
 const dateLabel = (date) => DATE_FMT.format(new Date(date + "T12:00:00Z"));
 const shortDate = (date) =>
-  new Intl.DateTimeFormat("fr-FR", {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  }).format(new Date(date + "T12:00:00Z"));
+  SHORT_DATE_FMT.format(new Date(date + "T12:00:00Z"));
+const MONTH_SHORT = MONTHS.map((_, i) =>
+  MONTH_SHORT_FMT.format(new Date(Date.UTC(2024, i, 15))),
+);
+const monthName = (month) => MONTHS[month - 1].toLowerCase();
 const sourceLink =
   "https://odre.opendatasoft.com/explore/dataset/eco2mix-national-cons-def/";
+const repoLink = "https://github.com/Badreddine05/gridpulse";
 
-function Spark({ values, color = "#bcf36a" }) {
-  if (!values.length) return null;
-  const lo = Math.min(...values),
-    hi = Math.max(...values),
-    y = (v) => 40 - ((v - lo) / (hi - lo || 1)) * 32;
-  const d = values
-    .map(
-      (v, i) =>
-        `${i ? "L" : "M"}${(i / (values.length - 1 || 1)) * 100},${y(v)}`,
-    )
-    .join(" ");
+const VIEWS = [
+  ["overview", "Vue d’ensemble"],
+  ["forecast", "Prévisions"],
+  ["method", "Données et méthode"],
+];
+const HEADINGS = {
+  overview: {
+    title: "Consommation et production d’électricité, France, 2023–2024",
+    lead: "Moyennes horaires publiées par RTE (éCO2mix), de janvier 2023 à décembre 2024. Il s’agit d’un instantané historique : les valeurs ne sont pas mises à jour en direct.",
+  },
+  forecast: {
+    title: "Prévision de la consommation à 24 heures",
+    lead: "Le modèle prévoit la consommation de chaque heure 24 heures à l’avance. Il est évalué sur novembre et décembre 2024, deux mois exclus de l’entraînement et de la calibration.",
+  },
+  method: {
+    title: "Données et méthode",
+    lead: "D’où viennent les données et comment chaque indicateur est calculé.",
+  },
+};
+
+/* Generation mix: fixed display order (nuclear, renewables, fossil) and
+   theme-aware colours. Adjacent pairs were checked for colour-blind separation. */
+const MIX = [
+  { key: "nucleaire", color: "var(--ink)" },
+  { key: "hydraulique", color: "var(--neuro)" },
+  { key: "eolien", color: "var(--flow)" },
+  { key: "solaire", color: "var(--grid)" },
+  { key: "bioenergies", color: "var(--data-muted)" },
+  { key: "gaz", color: "var(--retail)" },
+  { key: "fioul", color: "var(--rule-2)" },
+  { key: "charbon", color: "var(--ink-2)" },
+];
+
+/* Theme: Auto (system), then Clair, then Sombre, stored as "bc-theme". */
+const THEME_KEY = "bc-theme";
+const THEME_STEPS = [
+  { value: null, label: "Auto" },
+  { value: "light", label: "Clair" },
+  { value: "dark", label: "Sombre" },
+];
+function readStoredTheme() {
+  try {
+    const value = window.localStorage.getItem(THEME_KEY);
+    return value === "light" || value === "dark" ? value : null;
+  } catch {
+    return null;
+  }
+}
+function storeTheme(theme) {
+  try {
+    if (theme) window.localStorage.setItem(THEME_KEY, theme);
+    else window.localStorage.removeItem(THEME_KEY);
+  } catch {
+    /* Storage unavailable: the choice lasts for this page only. */
+  }
+}
+function applyTheme(theme) {
+  const root = document.documentElement;
+  if (theme) root.setAttribute("data-theme", theme);
+  else root.removeAttribute("data-theme");
+  const metas = [...document.querySelectorAll('meta[name="theme-color"]')];
+  metas.forEach((meta) => {
+    if (!meta.dataset.default)
+      meta.dataset.default = meta.getAttribute("content");
+  });
+  const forced = theme
+    ? metas.find((meta) => (meta.getAttribute("media") || "").includes(theme))
+    : null;
+  metas.forEach((meta) =>
+    meta.setAttribute(
+      "content",
+      forced ? forced.dataset.default : meta.dataset.default,
+    ),
+  );
+}
+
+function ThemeIcon({ mode }) {
   return (
-    <svg className="spark" viewBox="0 0 100 44" aria-hidden="true">
-      <path
-        d={d}
-        stroke={color}
-        fill="none"
+    <svg
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle
+        cx="12"
+        cy="12"
+        r="8"
+        fill={mode === "dark" ? "currentColor" : "none"}
+        stroke="currentColor"
         strokeWidth="2"
-        strokeLinecap="round"
       />
+      {mode == null ? (
+        <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" />
+      ) : null}
     </svg>
   );
 }
 
-function Kpi({ label, value, unit, foot, icon: Icon, accent, values, delta }) {
-  return (
-    <article className={"kpi " + (accent ? "accent" : "")}>
-      <div className="kpi-label">
-        <span>{label}</span>
-        <Icon size={16} />
-      </div>
-      <div className="kpi-value">
-        {value}
-        <span>{unit}</span>
-      </div>
-      <div className="kpi-bottom">
-        <span>
-          {delta != null ? (
-            <b className={delta < 0 ? "positive" : "neutral"}>
-              {delta < 0 ? (
-                <ArrowDownRight size={13} />
-              ) : (
-                <ArrowUpRight size={13} />
-              )}{" "}
-              {fmt(Math.abs(delta), 1)} %
-            </b>
-          ) : null}
-          {foot}
-        </span>
-        <Spark values={values || []} color={accent ? "#bcf36a" : "#69828c"} />
-      </div>
-    </article>
+function ThemeButton() {
+  const [theme, setTheme] = useState(readStoredTheme);
+  useEffect(() => {
+    const onStorage = (event) => {
+      if (event.key !== THEME_KEY && event.key !== null) return;
+      const stored = readStoredTheme();
+      setTheme(stored);
+      applyTheme(stored);
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+  const index = Math.max(
+    0,
+    THEME_STEPS.findIndex((step) => step.value === theme),
   );
+  const current = THEME_STEPS[index],
+    next = THEME_STEPS[(index + 1) % THEME_STEPS.length];
+  return (
+    <button
+      type="button"
+      className="theme-button"
+      onClick={() => {
+        setTheme(next.value);
+        applyTheme(next.value);
+        storeTheme(next.value);
+      }}
+      aria-label={`Thème : ${current.label}. Passer au thème ${next.label.toLowerCase()}`}
+      title={`Thème : ${current.label}`}
+    >
+      <ThemeIcon mode={theme} />
+    </button>
+  );
+}
+
+function GridPulseMark({ size = 22 }) {
+  return (
+    <svg
+      className="mark"
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      focusable="false"
+    >
+      <g
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M2.5 16C4.5 16 5.5 9 8.5 9c2 0 2.2 3.2 4.1 3.2 2.2 0 2.8-6.7 5.4-6.7 2.3 0 2.8 7 3.5 10.5" />
+        <g fill="currentColor" stroke="none">
+          <circle cx="3" cy="20.5" r="1" />
+          <circle cx="7.5" cy="20.5" r="1" />
+          <circle cx="12" cy="20.5" r="1" />
+          <circle cx="16.5" cy="20.5" r="1" />
+          <circle cx="21" cy="20.5" r="1" />
+        </g>
+      </g>
+    </svg>
+  );
+}
+
+function External() {
+  return (
+    <>
+      <ArrowUpRight
+        className="external-icon"
+        size={14}
+        strokeWidth={2}
+        aria-hidden="true"
+      />
+      <span className="sr-only"> (nouvel onglet)</span>
+    </>
+  );
+}
+
+function Key({ type }) {
+  return (
+    <svg
+      className="key"
+      width="20"
+      height="10"
+      viewBox="0 0 20 10"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {type === "band" ? (
+        <rect x="0" y="1" width="20" height="8" className="band" />
+      ) : (
+        <line x1="1" x2="19" y1="5" y2="5" className={`key-line key-${type}`} />
+      )}
+    </svg>
+  );
+}
+
+function Figure({ label, value, unit, context }) {
+  return (
+    <div className="figure">
+      <dt>{label}</dt>
+      <dd className="figure-value">
+        <span className="figure-number">{value}</span>
+        {unit ? <span className="figure-unit">{unit}</span> : null}
+      </dd>
+      {context ? <dd className="figure-context">{context}</dd> : null}
+    </div>
+  );
+}
+
+/* Charts are drawn at the container's real pixel width so that axis text
+   stays at 11 px on every screen instead of being scaled with a viewBox.
+   The width is measured before the first paint; until then nothing is drawn. */
+function useWidth() {
+  const ref = useRef(null);
+  const [width, setWidth] = useState(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const update = () => {
+      const next = Math.round(el.getBoundingClientRect().width);
+      if (next > 0) setWidth(next);
+    };
+    update();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width];
+}
+
+function hourlyTicks(data) {
+  const seen = new Set(),
+    ticks = [];
+  data.forEach((r, i) => {
+    const hour = Number(r.time.slice(0, 2));
+    if (hour % 6 === 0 && !seen.has(hour)) {
+      seen.add(hour);
+      ticks.push(i);
+    }
+  });
+  const last = data.length - 1;
+  if (!ticks.length || last - ticks[ticks.length - 1] >= 3) ticks.push(last);
+  return ticks;
 }
 
 function Chart({
@@ -133,9 +313,7 @@ function Chart({
   baseline = true,
 }) {
   const [hover, setHover] = useState(null);
-  const w = 900,
-    h = 280,
-    pad = { l: 49, r: 18, t: 21, b: 32 };
+  const [ref, width] = useWidth();
   const all = data
     .flatMap((r) => [
       r.consommation,
@@ -145,10 +323,20 @@ function Chart({
     ])
     .filter(Number.isFinite);
   if (!all.length)
-    return <div className="empty">Aucune mesure pour cette sélection.</div>;
+    return (
+      <div ref={ref} className="chart">
+        <p className="empty">Aucune mesure pour cette sélection.</p>
+      </div>
+    );
+  if (!width) return <div ref={ref} className="chart" />;
+  const compact = width < 560;
+  const w = Math.max(width, 240),
+    h = daily ? (compact ? 260 : 340) : compact ? 230 : 300,
+    pad = { l: 34, r: 8, t: 24, b: 30 };
   const lo = Math.floor((Math.min(...all) - 3000) / 10000) * 10000,
     hi = Math.ceil((Math.max(...all) + 3000) / 10000) * 10000;
-  const x = (i) => pad.l + (i / (data.length - 1 || 1)) * (w - pad.l - pad.r),
+  const n = data.length;
+  const x = (i) => pad.l + (i / (n - 1 || 1)) * (w - pad.l - pad.r),
     y = (v) => h - pad.b - ((v - lo) / (hi - lo || 1)) * (h - pad.t - pad.b);
   const line = (key) =>
     data
@@ -158,16 +346,26 @@ function Chart({
           : "",
       )
       .join(" ");
-  const active = hover ?? Math.min(cursor ?? data.length - 1, data.length - 1),
+  const active = hover ?? Math.min(cursor ?? n - 1, n - 1),
     point = data[active];
-  const ticks = Array.from({ length: 5 }, (_, i) => lo + (i * (hi - lo)) / 4);
-  const xs = [
-    0,
-    Math.round((data.length - 1) / 4),
-    Math.round((data.length - 1) / 2),
-    Math.round((data.length - 1) * 0.75),
-    data.length - 1,
-  ];
+  const step = (hi - lo) / 10000 > 6 ? 20000 : 10000;
+  const ticks = [];
+  for (let t = Math.ceil(lo / step) * step; t <= hi; t += step) ticks.push(t);
+  const xTicks = daily
+    ? [
+        ...new Set(
+          compact
+            ? [0, Math.round((n - 1) / 2), n - 1]
+            : [
+                0,
+                Math.round((n - 1) / 4),
+                Math.round((n - 1) / 2),
+                Math.round((n - 1) * 0.75),
+                n - 1,
+              ],
+        ),
+      ]
+    : hourlyTicks(data);
   const validBand = data.every(
     (r) => Number.isFinite(r.lower) && Number.isFinite(r.upper),
   );
@@ -175,18 +373,18 @@ function Chart({
     ? data.map((r, i) => `${i ? "L" : "M"}${x(i)},${y(r.upper)}`).join(" ") +
       [...data]
         .reverse()
-        .map((r, j) => `L${x(data.length - 1 - j)},${y(r.lower)}`)
+        .map((r, j) => `L${x(n - 1 - j)},${y(r.lower)}`)
         .join(" ") +
       "Z"
     : "";
-  const observedArea = data.every((r) => Number.isFinite(r.consommation))
-    ? line("consommation") +
-      ` L${x(data.length - 1)},${h - pad.b} L${x(0)},${h - pad.b}Z`
-    : "";
+  const slot = (w - pad.l - pad.r) / (n - 1 || 1);
+  const drawKey = data[0]?.timestamp ?? data[0]?.date;
   return (
-    <div className="chart-container">
+    <div ref={ref} className="chart">
       <svg
         viewBox={`0 0 ${w} ${h}`}
+        width={w}
+        height={h}
         role="img"
         aria-label={
           forecast
@@ -195,92 +393,101 @@ function Chart({
         }
         onMouseLeave={() => setHover(null)}
       >
-        <defs>
-          <linearGradient id="areaDemand" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#b7ef67" stopOpacity=".16" />
-            <stop offset="100%" stopColor="#b7ef67" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {ticks.map((t) => (
-          <g key={t}>
-            <line
-              x1={pad.l}
-              x2={w - pad.r}
-              y1={y(t)}
-              y2={y(t)}
-              className="grid-line"
-            />
-            <text
-              x={pad.l - 12}
-              y={y(t) + 4}
-              textAnchor="end"
-              className="axis-label"
-            >
-              {fmt(t / 1000, Number.isInteger(t / 1000) ? 0 : 1)}
-            </text>
-          </g>
-        ))}
-        <text x="8" y="12" className="axis-label axis-unit">
+        <text
+          x={pad.l - 8}
+          y="10"
+          textAnchor="end"
+          className="axis-label axis-unit"
+        >
           GW
         </text>
-        {xs.map((i, j) => (
+        {ticks.map((t) => {
+          const ty = Math.round(y(t)) + 0.5;
+          return (
+            <g key={t}>
+              <line
+                x1={pad.l}
+                x2={w - pad.r}
+                y1={ty}
+                y2={ty}
+                className="grid-line"
+              />
+              <text
+                x={pad.l - 8}
+                y={ty}
+                dy="0.32em"
+                textAnchor="end"
+                className="axis-label"
+              >
+                {fmt(t / 1000)}
+              </text>
+            </g>
+          );
+        })}
+        {xTicks.map((i) => (
           <text
-            key={j}
+            key={i}
             x={x(i)}
-            y={h - 6}
-            textAnchor={j === 0 ? "start" : j === 4 ? "end" : "middle"}
+            y={h - 8}
+            textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"}
             className="axis-label"
           >
             {daily ? shortDate(data[i].date) : data[i].time}
           </text>
         ))}
-        {forecast && band ? (
-          <path d={band} fill="#67d5e8" fillOpacity=".12" />
-        ) : null}
-        {!forecast && observedArea ? (
-          <path d={observedArea} fill="url(#areaDemand)" />
-        ) : null}
+        {forecast && band ? <path d={band} className="band" /> : null}
         {forecast && baseline ? (
-          <path d={line("baseline")} className="baseline-line" />
+          <path d={line("baseline")} className="line line-baseline" />
         ) : null}
         {forecast ? (
-          <path d={line("prediction")} className="forecast-line" />
+          <path
+            key={`forecast-${drawKey}`}
+            d={line("prediction")}
+            pathLength="1"
+            className="line line-forecast line-draw"
+          />
         ) : null}
-        <path d={line("consommation")} className="demand-line" />
+        <path
+          key={`observed-${drawKey}`}
+          d={line("consommation")}
+          pathLength="1"
+          className="line line-observed line-draw"
+        />
         {point && Number.isFinite(point.consommation) ? (
-          <g className="chart-cursor">
+          <g
+            className="chart-cursor"
+            style={{ transform: `translateX(${x(active)}px)` }}
+            aria-hidden="true"
+          >
             <line
-              x1={x(active)}
-              x2={x(active)}
+              x1="0"
+              x2="0"
               y1={pad.t}
               y2={h - pad.b}
-              stroke="#c6dcce"
-              strokeDasharray="3 6"
-              opacity=".32"
+              className="cursor-line"
             />
+            {forecast && Number.isFinite(point.prediction) ? (
+              <circle
+                cx="0"
+                cy={y(point.prediction)}
+                r="4"
+                className="cursor-dot is-forecast"
+              />
+            ) : null}
             <circle
-              cx={x(active)}
+              cx="0"
               cy={y(point.consommation)}
-              r="8"
-              fill="#bcf36a"
-              opacity=".14"
-            />
-            <circle
-              cx={x(active)}
-              cy={y(point.consommation)}
-              r="4"
-              fill="#bcf36a"
-              stroke="#0e1820"
-              strokeWidth="2"
+              r="4.5"
+              className="cursor-dot"
             />
           </g>
         ) : null}
         {data.map((r, i) => (
           <rect
             key={i}
-            x={x(i) - (w - pad.l - pad.r) / (data.length - 1 || 1) / 2}
+            x={x(i) - slot / 2}
             y={pad.t}
-            width={(w - pad.l - pad.r) / (data.length - 1 || 1)}
+            width={slot}
             height={h - pad.t - pad.b}
             fill="transparent"
             onMouseEnter={() => setHover(i)}
@@ -295,112 +502,85 @@ function Chart({
           </rect>
         ))}
       </svg>
-      <div className="chart-readout">
-        <span>{daily ? shortDate(point.date) : point.time}</span>
-        <b>
-          {fmt(gw(point.consommation), 2)} <small>GW observés</small>
-        </b>
+      <p className="chart-readout">
+        <span className="readout-time">
+          {daily ? shortDate(point.date) : point.time}
+        </span>
+        <span>
+          <Key type="observed" />
+          <b>{fmt(gw(point.consommation), 2)}</b> GW observés
+        </span>
         {forecast && point.prediction != null ? (
-          <b className="cyan">
-            {fmt(point.prediction / 1000, 2)} <small>GW prévus</small>
-          </b>
+          <span>
+            <Key type="forecast" />
+            <b>{fmt(point.prediction / 1000, 2)}</b> GW prévus
+          </span>
         ) : null}
-      </div>
+      </p>
     </div>
   );
 }
 
 function Mix({ rows, caption }) {
-  const sum = summary(rows),
-    fuels = sum.fuels;
+  const sum = summary(rows);
+  const byKey = Object.fromEntries(sum.fuels.map((f) => [f.key, f]));
+  const fuels = MIX.map((m) => ({ ...byKey[m.key], color: m.color }));
+  const head = (
+    <header className="panel-head">
+      <div className="panel-title">
+        <p className="fig-label">Fig. 2</p>
+        <h2 className="fig-title" id="fig-mix">
+          Mix de production
+        </h2>
+        <p className="panel-desc">{caption}</p>
+      </div>
+    </header>
+  );
   if (!sum.productionHours) {
     return (
-      <section className="panel mix-missing">
-        <p className="eyebrow">PRODUCTION</p>
-        <h2>Le mix électrique</h2>
+      <section className="panel mix-panel" aria-labelledby="fig-mix">
+        {head}
         <div className="empty">
-          <div>
-            <Info size={24} />
-            <p>Mesures absentes pour cette heure.</p>
-            <small>Le mix n'est pas calculé sans données complètes.</small>
-          </div>
+          <p>Mesures absentes pour cette heure.</p>
+          <p className="empty-note">
+            Le mix n’est pas calculé sans données complètes.
+          </p>
         </div>
-        <p className="panel-note">{caption}</p>
       </section>
     );
   }
-  let accumulated = 0;
   return (
-    <section className="panel mix-panel">
-      <div className="panel-heading">
-        <div>
-          <p className="eyebrow">PRODUCTION</p>
-          <h2>Le mix électrique</h2>
-        </div>
-        <Layers size={18} />
-      </div>
-      <div className="donut-wrap">
-        <svg
-          viewBox="0 0 200 200"
-          aria-label="Répartition de la production électrique par filière"
-          role="img"
-        >
-          <circle
-            cx="100"
-            cy="100"
-            r="77"
-            stroke="#1d2932"
-            strokeWidth="18"
-            fill="none"
-          />
-          {fuels.map((f) => {
-            const start = accumulated;
-            accumulated += f.share;
-            return (
-              <circle
-                key={f.key}
-                cx="100"
-                cy="100"
-                r="77"
-                fill="none"
-                stroke={f.color}
-                strokeWidth="18"
-                strokeDasharray={`${Math.max(0, f.share * 483.8 - 2)} ${483.8}`}
-                strokeDashoffset={-start * 483.8}
-                transform="rotate(-90 100 100)"
-                className="mix-arc"
-              >
-                <title>
-                  {f.label} : {fmt(f.share * 100, 1)} %
-                </title>
-              </circle>
-            );
-          })}
-        </svg>
-        <div className="donut-center">
-          <Leaf size={19} />
-          <strong>
-            {fmt(sum.renewable, 1)}
-            <small>%</small>
-          </strong>
-          <span>renouvelable</span>
-        </div>
-      </div>
-      <p className="mix-caption">{caption}</p>
-      <div className="mix-list">
+    <section className="panel mix-panel" aria-labelledby="fig-mix">
+      {head}
+      <p className="mix-total">
+        <span className="figure-number">{fmt(sum.renewable, 1)}</span>
+        <span className="figure-unit">%</span>
+        <span className="mix-total-label">renouvelable</span>
+      </p>
+      <div className="mix-bar" aria-hidden="true">
         {fuels.map((f) => (
-          <div key={f.key}>
-            <span>
-              <i style={{ background: f.color }} />
-              {f.label}
-            </span>
-            <b>
-              {fmt(f.share * 100, 1)} <small>%</small>
-            </b>
-          </div>
+          <span
+            key={f.key}
+            className={f.share > 0 ? "has-value" : undefined}
+            style={{ flexGrow: f.share * 1000, background: f.color }}
+          />
         ))}
       </div>
-      <p className="panel-note">
+      <ul className="mix-legend">
+        {fuels.map((f) => (
+          <li key={f.key}>
+            <span className="mix-name">
+              <i className="swatch" style={{ background: f.color }} />
+              {f.label}
+            </span>
+            <span className="num">
+              {fmt(f.share * 100, 1)}
+              {NB}%
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="panel-foot">
         Part de production · nucléaire inclus dans le total, hors renouvelables.
       </p>
     </section>
@@ -414,54 +594,103 @@ function Calendar({ rows, year, onSelect, selected }) {
     max = Math.max(...peaks);
   const firstDay = new Date(`${year}-01-01T12:00:00Z`).getUTCDay();
   const offset = (firstDay + 6) % 7;
+  const weeks = Math.ceil((offset + data.length) / 7);
+  const monthStarts = MONTHS.map((_, i) => {
+    const index = data.findIndex(
+      (d) => d.date.slice(5, 7) === String(i + 1).padStart(2, "0"),
+    );
+    return index < 0 ? null : Math.floor((offset + index) / 7);
+  });
+  const shade = (t) =>
+    `color-mix(in oklab, var(--grid) ${Math.round(t * 100)}%, var(--paper-3))`;
+  const scrollRef = useRef(null);
+  useEffect(() => {
+    /* On narrow screens the year scrolls sideways: keep the selected day visible. */
+    const box = scrollRef.current;
+    if (!box || box.scrollWidth <= box.clientWidth) return;
+    const cell = box.querySelector(".heatmap-cell.selected");
+    if (!cell) return;
+    const b = box.getBoundingClientRect(),
+      c = cell.getBoundingClientRect();
+    if (c.left < b.left || c.right > b.right)
+      box.scrollLeft += c.left - b.left - (b.width - c.width) / 2;
+  }, [selected, year]);
   return (
-    <section className="panel calendar-panel">
-      <div className="panel-heading">
-        <div>
-          <p className="eyebrow">UNE ANNÉE EN UN REGARD</p>
-          <h2>Le calendrier des pointes</h2>
+    <section className="panel calendar-panel" aria-labelledby="fig-calendar">
+      <header className="panel-head">
+        <div className="panel-title">
+          <p className="fig-label">Fig. 3</p>
+          <h2 className="fig-title" id="fig-calendar">
+            Pointe journalière de consommation, {year}
+          </h2>
+          <p className="panel-desc">
+            Maximum horaire de chaque jour, en GW. Cliquer sur un jour pour
+            explorer sa courbe.
+          </p>
         </div>
-        <span className="subtle-tag">{year}</span>
-      </div>
-      <div className="heatmap-scroll">
-        <div className="heatmap-months">
-          {MONTHS.map((m) => (
-            <span key={m}>{m.slice(0, 3)}.</span>
-          ))}
-        </div>
-        <div className="heatmap-grid">
-          {Array.from({ length: offset }, (_, i) => (
-            <span key={"pad" + i} />
-          ))}
-          {data.map((d) => (
-            <button
-              key={d.date}
-              type="button"
-              onClick={() => onSelect(d.date)}
-              className={selected === d.date ? "selected" : ""}
-              style={{
-                background: `color-mix(in srgb, #bcf36a ${18 + ((d.peak - min) / (max - min || 1)) * 82}%, #152229)`,
-              }}
-              aria-label={`${dateLabel(d.date)}, pointe ${fmt(d.peak / 1000, 1)} GW`}
-              title={`${dateLabel(d.date)} · ${fmt(d.peak / 1000, 1)} GW`}
-            />
-          ))}
+      </header>
+      <div className="heatmap-scroll" ref={scrollRef}>
+        <div className="heatmap" style={{ "--weeks": weeks }}>
+          <div className="heatmap-months" aria-hidden="true">
+            {MONTH_SHORT.map((m, i) =>
+              monthStarts[i] == null ? null : (
+                <span
+                  key={m}
+                  style={{ gridColumn: `${monthStarts[i] + 1} / span 4` }}
+                >
+                  {m}
+                </span>
+              ),
+            )}
+          </div>
+          <div className="heatmap-days" aria-hidden="true">
+            <span>lun.</span>
+            <span />
+            <span>mer.</span>
+            <span />
+            <span>ven.</span>
+            <span />
+            <span />
+          </div>
+          <div className="heatmap-grid">
+            {Array.from({ length: offset }, (_, i) => (
+              <span key={"pad" + i} />
+            ))}
+            {data.map((d) => (
+              <button
+                key={d.date}
+                type="button"
+                onClick={() => onSelect(d.date)}
+                className={
+                  "heatmap-cell" + (selected === d.date ? " selected" : "")
+                }
+                aria-pressed={selected === d.date}
+                style={{
+                  background: shade((d.peak - min) / (max - min || 1)),
+                }}
+                aria-label={`${dateLabel(d.date)}, pointe ${fmt(d.peak / 1000, 1)} GW`}
+                title={`${dateLabel(d.date)} · ${fmt(d.peak / 1000, 1)} GW`}
+              />
+            ))}
+          </div>
         </div>
       </div>
       <div className="heatmap-legend">
-        <span>Cliquer sur un jour pour explorer sa courbe.</span>
-        <div>
-          <span>{fmt(min / 1000)} GW</span>
-          {[20, 40, 60, 80, 100].map((a) => (
-            <i
-              key={a}
-              style={{
-                background: `color-mix(in srgb, #bcf36a ${a}%, #152229)`,
-              }}
-            />
-          ))}
-          <span>{fmt(max / 1000)} GW</span>
-        </div>
+        <span className="ramp-scale">
+          <span>
+            {fmt(min / 1000)}
+            {NB}GW
+          </span>
+          <span className="ramp" aria-hidden="true">
+            {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+              <i key={t} style={{ background: shade(t) }} />
+            ))}
+          </span>
+          <span>
+            {fmt(max / 1000)}
+            {NB}GW
+          </span>
+        </span>
       </div>
     </section>
   );
@@ -514,90 +743,102 @@ function Overview({
     setMonth(Number(d.slice(5, 7)));
     setDay(d);
   }
+  const prevMonth = month === 1 ? 12 : month - 1,
+    prevYear = month === 1 ? year - 1 : year;
+  const dayDate = actualDay[0]?.date;
   return (
     <>
-      <div className="kpis">
-        <Kpi
+      <dl className="figures">
+        <Figure
           label="Consommation du mois"
           value={fmt(sum.energy, 2)}
           unit="TWh"
-          icon={Zap}
-          accent
-          values={days.map((d) => d.consommation)}
-          delta={delta}
-          foot={delta == null ? "Énergie consommée" : "vs mois précédent"}
+          context={
+            delta == null
+              ? "Énergie consommée"
+              : `${delta < 0 ? "−" : "+"}${fmt(Math.abs(delta), 1)}${NB}% par rapport à ${monthName(prevMonth)} ${prevYear}`
+          }
         />
-        <Kpi
+        <Figure
           label="Pointe de consommation"
           value={fmt(sum.peak, 1)}
           unit="GW"
-          icon={Activity}
-          values={days.map((d) => d.peak)}
-          foot="Maximum horaire du mois"
+          context="Maximum horaire du mois"
         />
-        <Kpi
+        <Figure
           label="Production renouvelable"
           value={fmt(sum.renewable, 1)}
           unit="%"
-          icon={Wind}
-          values={[]}
-          foot="Éolien, solaire, hydraulique, bio"
+          context="Éolien, solaire, hydraulique, bio"
         />
-        <Kpi
+        <Figure
           label="Intensité carbone"
           value={fmt(sum.carbon, 1)}
-          unit="gCO₂/kWh"
-          icon={Leaf}
-          values={[]}
-          foot="Moyenne pondérée par production"
+          unit={
+            <>
+              gCO<sub>2</sub>/kWh
+            </>
+          }
+          context="Moyenne pondérée par la production"
         />
-      </div>
-      <div className="chart-layout">
-        <section className="panel demand-panel">
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">EXPLORER UNE JOURNÉE</p>
-              <h2>Le pouls du réseau</h2>
+      </dl>
+      <div className="split day-layout">
+        <section className="panel day-panel" aria-labelledby="fig-day">
+          <header className="panel-head">
+            <div className="panel-title">
+              <p className="fig-label">Fig. 1</p>
+              <h2 className="fig-title" id="fig-day">
+                Consommation horaire{dayDate ? `, ${dateLabel(dayDate)}` : ""}
+              </h2>
+              <p className="panel-desc">
+                Puissance moyenne de chaque heure, en GW, heure de Paris.
+              </p>
             </div>
-            <label className="date-control">
-              <CalendarDays size={14} />
-              <select
-                aria-label="Jour à explorer"
-                value={actualDay[0]?.date || ""}
-                onChange={(e) => setDay(e.target.value)}
-              >
-                {days.map((d) => (
-                  <option value={d.date} key={d.date}>
-                    {dateLabel(d.date)}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={13} />
+            <label className="field">
+              <span className="field-label">Jour</span>
+              <span className="select">
+                <select
+                  aria-label="Jour à explorer"
+                  value={actualDay[0]?.date || ""}
+                  onChange={(e) => setDay(e.target.value)}
+                >
+                  {days.map((d) => (
+                    <option value={d.date} key={d.date}>
+                      {dateLabel(d.date)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={16} aria-hidden="true" />
+              </span>
             </label>
-          </div>
-          <div className="chart-meta">
-            <div className="chart-main-number">
-              {fmt(gw(selected?.consommation), 1)}
-              <span>GW</span>
-              <small>à {selected?.time}</small>
-            </div>
-            <div className="chart-legends">
-              <span>
-                <i className="mint-dot" />
+          </header>
+          <div className="day-meta">
+            <p className="readout-main">
+              <span className="readout-value">
+                {fmt(gw(selected?.consommation), 1)}
+              </span>
+              <span className="figure-unit">GW</span>
+              <span className="readout-at">à {selected?.time}</span>
+            </p>
+            <div className="legend">
+              <span className="legend-item">
+                <Key type="observed" />
                 Observé
               </span>
               {hasForecast ? (
                 <button
-                  className={"legend-toggle " + (showForecast ? "on" : "")}
+                  type="button"
+                  className="legend-toggle"
                   aria-pressed={showForecast}
                   onClick={() => setShowForecast(!showForecast)}
                 >
-                  <i className="cyan-dot" />
-                  Prévision J+24 h
+                  <span className="checkbox" aria-hidden="true">
+                    {showForecast ? <Check size={12} strokeWidth={3} /> : null}
+                  </span>
+                  <Key type="forecast" />
+                  Prévision J+24{NB}h
                 </button>
-              ) : (
-                <span className="muted">Historique RTE</span>
-              )}
+              ) : null}
             </div>
           </div>
           <Chart
@@ -609,14 +850,23 @@ function Overview({
           />
           <div className="playback">
             <button
-              className={"play-button " + (playing ? "playing" : "")}
+              type="button"
+              className={
+                "icon-button play-button" + (playing ? " playing" : "")
+              }
               aria-label={playing ? "Mettre en pause" : "Lire la journée"}
               onClick={() => setPlaying(!playing)}
             >
-              {playing ? <Pause size={15} /> : <Play size={15} />}
+              {playing ? (
+                <Pause size={16} aria-hidden="true" />
+              ) : (
+                <Play size={16} aria-hidden="true" />
+              )}
             </button>
             <input
+              className="range"
               aria-label="Heure explorée"
+              aria-valuetext={selected?.time}
               type="range"
               min="0"
               max={Math.max(0, actualDay.length - 1)}
@@ -628,6 +878,7 @@ function Overview({
             />
             <span className="time-stamp">{selected?.time}</span>
             <button
+              type="button"
               className="icon-button"
               aria-label="Revenir à minuit"
               onClick={() => {
@@ -635,47 +886,54 @@ function Overview({
                 setCursor(0);
               }}
             >
-              <RotateCcw size={15} />
+              <RotateCcw size={16} aria-hidden="true" />
             </button>
           </div>
-          <div className="chart-footer">
+          <p className="chart-note">
+            <span>Moyennes horaires · heure de Paris</span>
             <span>
-              <Clock size={13} />
-              Moyennes horaires · heure de Paris
-            </span>
-            <span>
-              {actualDay.length} observations{" "}
+              {actualDay.length} observations
               {hasForecast && showForecast
-                ? "· intervalle calibré · nominal 90 %"
-                : ""}
+                ? ` · intervalle calibré · nominal${NB}90${NB}%`
+                : hasForecast
+                  ? ""
+                  : " · prévisions du 4 novembre au 31 décembre 2024"}
             </span>
-          </div>
+          </p>
         </section>
         <Mix
           rows={selected ? [selected] : []}
           caption={
             selected
-              ? `${dateLabel(selected.date)} · ${selected.time}`
+              ? `${dateLabel(selected.date)} à ${selected.time}`
               : "Aucune observation"
           }
         />
       </div>
       <Calendar rows={rows} year={year} onSelect={chooseDate} selected={day} />
-      <div className="bottom-grid">
-        <section className="panel monthly-panel">
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">SAISONNALITÉ</p>
-              <h2>La consommation au fil des mois</h2>
+      <div className="split lower-layout">
+        <section className="panel monthly-panel" aria-labelledby="fig-months">
+          <header className="panel-head">
+            <div className="panel-title">
+              <p className="fig-label">Fig. 4</p>
+              <h2 className="fig-title" id="fig-months">
+                Consommation mensuelle, {year}
+              </h2>
+              <p className="panel-desc">
+                Énergie consommée chaque mois, en TWh. Cliquer sur un mois pour
+                le sélectionner.
+              </p>
             </div>
-            <span className="subtle-tag">TWh</span>
-          </div>
+          </header>
           <div className="monthly-bars">
             {MONTHS.map((m, i) => {
               const value = summary(selectRows(rows, year, i + 1)).energy;
               return (
                 <button
-                  className={month === i + 1 ? "active" : ""}
+                  type="button"
+                  className={"month-bar" + (month === i + 1 ? " active" : "")}
+                  aria-pressed={month === i + 1}
+                  aria-label={`${m} ${year} : ${fmt(value, 2)} TWh`}
                   onClick={() => {
                     setMonth(i + 1);
                     setDay(`${year}-${String(i + 1).padStart(2, "0")}-11`);
@@ -683,56 +941,68 @@ function Overview({
                   key={m}
                   title={`${m} ${year} : ${fmt(value, 2)} TWh`}
                 >
-                  <span>{fmt(value, 1)}</span>
-                  <i style={{ height: `${(value / 55) * 125}px` }} />
-                  <small>{m.slice(0, 3)}</small>
+                  <span className="bar-value">{fmt(value, 1)}</span>
+                  <i style={{ height: `${(value / 55) * 140}px` }} />
+                  <span className="bar-label" data-initial={m[0]}>
+                    {MONTH_SHORT[i]}
+                  </span>
                 </button>
               );
             })}
           </div>
         </section>
-        <section className="insight-card">
-          <div className="insight-icon">
-            <FlaskConical size={20} />
-          </div>
-          <p className="eyebrow">LIRE LES CHIFFRES</p>
-          <h2>
-            Une photographie du réseau,
-            <br />
-            pas une mesure en direct.
+        <aside className="panel note" aria-labelledby="note-title">
+          <h2 className="section-title" id="note-title">
+            Un instantané historique
           </h2>
-          <p>
-            Explorez les données historiques 2023–2024. Les prévisions de
-            novembre et décembre 2024 sont évaluées sur des observations exclues
-            de l'entraînement.
+          <p className="prose">
+            Ces chiffres décrivent 2023 et 2024 à partir des données publiques
+            de RTE. Ce n’est pas une mesure en direct du réseau.
           </p>
-          <div className="insight-foot">
-            <span className="status-dot" />
-            Source publique RTE · éCO2mix
-          </div>
-        </section>
+          <p className="prose">
+            Les prévisions de novembre et décembre 2024 sont évaluées sur des
+            observations exclues de l’entraînement.
+          </p>
+          <p className="note-source">
+            Source publique :{" "}
+            <a href={sourceLink} target="_blank" rel="noreferrer">
+              RTE, éCO2mix
+              <External />
+            </a>
+          </p>
+        </aside>
       </div>
       <details className="data-table">
         <summary>
-          Consulter les valeurs de la journée <ChevronDown size={15} />
+          <span>Consulter les valeurs de la journée</span>
+          <ChevronDown size={18} aria-hidden="true" />
         </summary>
         <div className="table-scroll">
           <table>
+            <caption className="sr-only">
+              Valeurs horaires{dayDate ? ` du ${dateLabel(dayDate)}` : ""}
+            </caption>
             <thead>
               <tr>
-                <th>Heure (Paris)</th>
-                <th>Consommation (MW)</th>
-                <th>Prévision (MW)</th>
-                <th>CO₂ (g/kWh)</th>
+                <th scope="col">Heure (Paris)</th>
+                <th scope="col" className="num">
+                  Consommation (MW)
+                </th>
+                <th scope="col" className="num">
+                  Prévision (MW)
+                </th>
+                <th scope="col" className="num">
+                  CO<sub>2</sub> (g/kWh)
+                </th>
               </tr>
             </thead>
             <tbody>
               {actualDay.map((r) => (
                 <tr key={r.timestamp}>
-                  <td>{r.time}</td>
-                  <td>{fmt(r.consommation, 1)}</td>
-                  <td>{fmt(r.prediction, 1)}</td>
-                  <td>{fmt(r.taux_co2, 1)}</td>
+                  <td className="time">{r.time}</td>
+                  <td className="num">{fmt(r.consommation, 1)}</td>
+                  <td className="num">{fmt(r.prediction, 1)}</td>
+                  <td className="num">{fmt(r.taux_co2, 1)}</td>
                 </tr>
               ))}
             </tbody>
@@ -742,6 +1012,12 @@ function Overview({
     </>
   );
 }
+
+const PERIODS = [
+  ["all", "Novembre et décembre 2024"],
+  ["2024-11", "Novembre 2024"],
+  ["2024-12", "Décembre 2024"],
+];
 
 function Forecast({ rows, meta }) {
   const [period, setPeriod] = useState("all"),
@@ -760,225 +1036,209 @@ function Forecast({ rows, meta }) {
       .length /
       test.length) *
     100;
+  const periodLabel = PERIODS.find(([value]) => value === period)[1];
   return (
     <>
-      <div className="forecast-intro">
-        <div>
-          <span className="section-label">
-            <FlaskConical size={15} /> LABORATOIRE DE PRÉVISION
+      <div className="controls">
+        <label className="field">
+          <span className="field-label">Période évaluée</span>
+          <span className="select">
+            <select value={period} onChange={(e) => setPeriod(e.target.value)}>
+              {PERIODS.map(([value, label]) => (
+                <option value={value} key={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={16} aria-hidden="true" />
           </span>
-          <h2>Prévoir. Comparer. Mesurer.</h2>
-          <p>
-            Une vraie évaluation à 24 heures, sur un futur tenu à l'écart du
-            modèle.
-          </p>
-        </div>
-        <label className="select-label">
-          Période évaluée
-          <select value={period} onChange={(e) => setPeriod(e.target.value)}>
-            <option value="all">Novembre + décembre 2024</option>
-            <option value="2024-11">Novembre 2024</option>
-            <option value="2024-12">Décembre 2024</option>
-          </select>
         </label>
       </div>
-      <div className="kpis">
-        <Kpi
+      <dl className="figures">
+        <Figure
           label="Erreur absolue moyenne"
           value={fmt(mae / 1000, 2)}
           unit="GW"
-          icon={Target}
-          accent
-          foot={`${fmt(test.length)} heures évaluées`}
+          context={`${fmt(test.length)} heures évaluées`}
         />
-        <Kpi
+        <Figure
           label="Erreur du modèle de référence"
           value={fmt(baseMae / 1000, 2)}
           unit="GW"
-          icon={Activity}
-          foot="Même heure, une semaine avant"
+          context="Même heure, une semaine avant"
         />
-        <Kpi
-          label="Écart d'erreur vs référence"
+        <Figure
+          label="Écart d’erreur vs référence"
           value={(gain >= 0 ? "−" : "+") + fmt(Math.abs(gain), 1)}
           unit="%"
-          icon={ChartNoAxesCombined}
-          foot={
+          context={
             gain >= 0 ? "Erreur moyenne réduite" : "Erreur moyenne supérieure"
           }
         />
-        <Kpi
-          label="Couverture de l'intervalle"
-          value={fmt(coverage, 1)}
+        <Figure
+          label="Couverture de l’intervalle"
+          value={fmt(coverage, 2)}
           unit="%"
-          icon={ShieldCheck}
-          foot="Niveau nominal : 90 %"
+          context={`Niveau nominal${NB}: 90${NB}%`}
         />
-      </div>
-      <section className="panel forecast-chart">
-        <div className="panel-heading">
-          <div>
-            <p className="eyebrow">TEST HORS ENTRAÎNEMENT</p>
-            <h2>Prévision et réalité, côte à côte</h2>
+      </dl>
+      <section className="panel forecast-panel" aria-labelledby="fig-forecast">
+        <header className="panel-head">
+          <div className="panel-title">
+            <p className="fig-label">Fig. 1</p>
+            <h2 className="fig-title" id="fig-forecast">
+              Prévision et consommation observée sur la période de test
+            </h2>
+            <p className="panel-desc">
+              Moyennes journalières en GW, {periodLabel.toLowerCase()}.
+            </p>
           </div>
           <button
-            className="small-button"
+            type="button"
+            className="button button-secondary toggle-button"
             aria-pressed={baseline}
             onClick={() => setBaseline(!baseline)}
           >
-            {baseline ? <Check size={14} /> : <span className="check-box" />}
+            <span className="checkbox" aria-hidden="true">
+              {baseline ? <Check size={12} strokeWidth={3} /> : null}
+            </span>
             Afficher la référence
           </button>
-        </div>
-        <div className="forecast-legend">
-          <span>
-            <i className="mint-dot" />
-            Consommation réelle
-          </span>
-          <span>
-            <i className="cyan-dot" />
-            Modèle à 24 h
-          </span>
+        </header>
+        <ul className="legend chart-legend">
+          <li className="legend-item">
+            <Key type="observed" />
+            Consommation observée
+          </li>
+          <li className="legend-item">
+            <Key type="forecast" />
+            Prévision à 24{NB}h
+          </li>
           {baseline ? (
-            <span>
-              <i className="gray-dot" />
+            <li className="legend-item">
+              <Key type="baseline" />
               Référence hebdomadaire
-            </span>
+            </li>
           ) : null}
-          <span>
-            <i className="band-dot" />
-            Intervalle calibré
-          </span>
-        </div>
+          <li className="legend-item">
+            <Key type="band" />
+            Intervalle calibré, nominal 90{NB}%
+          </li>
+        </ul>
         <Chart data={days} forecast daily baseline={baseline} />
-        <p className="panel-note">
+        <p className="panel-foot">
           Courbes : moyennes journalières des valeurs horaires. Les erreurs et
-          la couverture ci-dessus sont calculées heure par heure. L'intervalle
+          la couverture ci-dessus sont calculées heure par heure. L’intervalle
           affiché est la moyenne des bornes horaires, sans garantie de
           couverture journalière.
         </p>
       </section>
-      <div className="model-grid">
-        <section className="panel">
-          <p className="eyebrow">UN DÉCOUPAGE CHRONOLOGIQUE</p>
-          <h2>Le futur reste dans le futur.</h2>
-          <div className="split-track">
+      <div className="split model-layout">
+        <section className="panel split-panel" aria-labelledby="fig-split">
+          <header className="panel-head">
+            <div className="panel-title">
+              <p className="fig-label">Fig. 2</p>
+              <h2 className="fig-title" id="fig-split">
+                Découpage chronologique des données
+              </h2>
+              <p className="panel-desc">
+                Les trois périodes se suivent dans le temps, sans chevauchement.
+              </p>
+            </div>
+          </header>
+          <div className="split-track" aria-hidden="true">
             <span className="split-train" />
             <span className="split-cal" />
             <span className="split-test" />
           </div>
-          <div className="split-labels">
-            <div>
-              <i className="mint-dot" />
-              <b>Entraînement</b>
-              <span>Jan. 2023 → août 2024</span>
+          <ul className="split-legend">
+            <li>
+              <b>
+                <i className="swatch split-train" />
+                Entraînement
+              </b>
+              <span>janv. 2023 – août 2024</span>
               <small>{fmt(metrics.train_rows)} heures valides</small>
-            </div>
-            <div>
-              <i className="cyan-dot" />
-              <b>Calibration</b>
-              <span>Sept. → oct. 2024</span>
+            </li>
+            <li>
+              <b>
+                <i className="swatch split-cal" />
+                Calibration
+              </b>
+              <span>sept. – oct. 2024</span>
               <small>{fmt(metrics.calibration_rows)} heures</small>
-            </div>
-            <div>
-              <i className="violet-dot" />
-              <b>Test final</b>
-              <span>Nov. → déc. 2024</span>
+            </li>
+            <li>
+              <b>
+                <i className="swatch split-test" />
+                Test final
+              </b>
+              <span>nov. – déc. 2024</span>
               <small>{fmt(metrics.test_rows)} heures</small>
-            </div>
-          </div>
-        </section>
-        <section className="panel model-card">
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">LE MODÈLE</p>
-              <h2>Gradient boosting</h2>
-            </div>
-            <Layers size={20} />
-          </div>
-          <ul>
-            <li>
-              <Check size={15} />
-              Consommation passée : 25 h à 14 jours
-            </li>
-            <li>
-              <Check size={15} />
-              Moyennes glissantes connues à l'origine
-            </li>
-            <li>
-              <Check size={15} />
-              Heure, jour de semaine et saison
-            </li>
-            <li>
-              <Check size={15} />
-              Aucune observation postérieure à l'origine
             </li>
           </ul>
-          <p className="panel-note">
-            Hyperparamètres fixés avant le test. Le modèle n'est pas réentraîné
+        </section>
+        <section className="panel model-panel" aria-labelledby="model-title">
+          <h2 className="section-title" id="model-title">
+            Modèle : gradient boosting
+          </h2>
+          <p className="model-id">
+            {metrics.model} · horizon {metrics.horizon_hours}
+            {NB}h
+          </p>
+          <ul className="feature-list">
+            <li>
+              Consommation passée{NB}: 25{NB}h à 14{NB}jours
+            </li>
+            <li>Moyennes glissantes connues à l’origine</li>
+            <li>Heure, jour de semaine et saison</li>
+            <li>Aucune observation postérieure à l’origine</li>
+          </ul>
+          <p className="panel-foot">
+            Hyperparamètres fixés avant le test. Le modèle n’est pas réentraîné
             sur la calibration.
           </p>
         </section>
       </div>
-      <div className="limitation">
-        <Info size={19} />
-        <div>
-          <strong>Ce que l'évaluation permet de dire</strong>
-          <p>
-            Ces résultats décrivent uniquement les deux mois de test.
-            L'intervalle utilise les résidus de septembre–octobre : sa
-            couverture future n'est pas garantie, notamment lors de changements
-            de saison ou d'événements inhabituels. Cette démo ne fournit pas de
-            prévisions opérationnelles.
-          </p>
-        </div>
-      </div>
+      <aside className="caveat" aria-labelledby="caveat-title">
+        <h2 className="section-title" id="caveat-title">
+          Ce que l’évaluation permet de dire
+        </h2>
+        <p className="prose">
+          Ces résultats décrivent uniquement les deux mois de test. L’intervalle
+          utilise les résidus de septembre–octobre : sa couverture future n’est
+          pas garantie, notamment lors de changements de saison ou d’événements
+          inhabituels. Cette démo ne fournit pas de prévisions opérationnelles.
+        </p>
+      </aside>
     </>
   );
 }
 
 function Methodology({ meta }) {
-  const q = meta.quality,
-    m = meta.model;
+  const q = meta.quality;
   return (
     <div className="methodology">
-      <div className="forecast-intro">
-        <div>
-          <span className="section-label">
-            <Database size={15} /> DONNÉES & MÉTHODE
-          </span>
-          <h2>Des chiffres que l'on peut vérifier.</h2>
-          <p>
-            Source publique, transformations explicites et évaluation
-            reproductible.
-          </p>
-        </div>
-        <a
-          className="primary-button"
-          href={sourceLink}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Explorer la source RTE
-          <ArrowUpRight size={16} />
-        </a>
-      </div>
-      <div className="method-grid">
-        <section className="panel">
-          <div className="source-logo">
-            <Radio size={23} />
-            <span>
-              RTE <small>éCO2mix</small>
-            </span>
-            <span className="subtle-tag">OPEN DATA</span>
-          </div>
-          <h3>France · 2023–2024</h3>
-          <p>
+      <div className="split method-layout">
+        <section className="panel source-panel" aria-labelledby="source-title">
+          <h2 className="section-title" id="source-title">
+            RTE éCO2mix, France, 2023–2024
+          </h2>
+          <p className="prose">
             Consommation, production par filière et estimation des émissions de
             la production électrique française. Les données sont téléchargées
             depuis la plateforme ODRÉ.
           </p>
-          <dl>
+          <a
+            className="button button-primary"
+            href={sourceLink}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Ouvrir le jeu de données RTE
+            <External />
+          </a>
+          <dl className="facts">
             <div>
               <dt>Observations source</dt>
               <dd>{fmt(q.source_rows)}</dd>
@@ -996,7 +1256,9 @@ function Methodology({ meta }) {
               <dd>{q.missing_consumption_hours}</dd>
             </div>
             <div>
-              <dt>Heures de CO₂ manquantes</dt>
+              <dt>
+                Heures de CO<sub>2</sub> manquantes
+              </dt>
               <dd>{q.missing_carbon_hours}</dd>
             </div>
             <div>
@@ -1007,16 +1269,21 @@ function Methodology({ meta }) {
               <dt>Licence des données</dt>
               <dd>
                 <a href={meta.license_url} target="_blank" rel="noreferrer">
-                  Etalab 2.0 <ExternalLink size={12} />
+                  Etalab 2.0
+                  <External />
                 </a>
               </dd>
             </div>
           </dl>
         </section>
-        <section className="panel">
-          <p className="eyebrow">DE LA SOURCE À L'ÉCRAN</p>
-          <h2>Une chaîne de données lisible</h2>
-          <div className="pipeline-list">
+        <section
+          className="panel pipeline-panel"
+          aria-labelledby="pipeline-title"
+        >
+          <h2 className="section-title" id="pipeline-title">
+            De la source à l’écran
+          </h2>
+          <ol className="steps">
             {[
               [
                 "01",
@@ -1043,27 +1310,31 @@ function Methodology({ meta }) {
                 "Explorer",
                 "Instantané JSON embarqué, sans appel externe au chargement.",
               ],
-            ].map(([n, title, text]) => (
-              <div key={n}>
-                <span>{n}</span>
+            ].map(([number, title, text]) => (
+              <li key={number}>
+                <span className="step-number">{number}</span>
                 <div>
                   <h3>{title}</h3>
                   <p>{text}</p>
                 </div>
-              </div>
+              </li>
             ))}
-          </div>
+          </ol>
         </section>
       </div>
-      <section className="panel definitions">
-        <p className="eyebrow">CONVENTIONS DE CALCUL</p>
-        <h2>Les définitions derrière les indicateurs</h2>
+      <section
+        className="panel definitions-panel"
+        aria-labelledby="definitions-title"
+      >
+        <h2 className="section-title" id="definitions-title">
+          Définitions des indicateurs
+        </h2>
         <div className="definition-grid">
           <div>
             <h3>Puissance et énergie</h3>
             <p>
               Les valeurs horaires sont des moyennes en MW. La somme des
-              moyennes sur des heures complètes donne l'énergie en MWh. Le
+              moyennes sur des heures complètes donne l’énergie en MWh. Le
               tableau de bord la convertit en TWh.
             </p>
           </div>
@@ -1072,23 +1343,23 @@ function Methodology({ meta }) {
             <p>
               Les huit filières de production constituent le dénominateur. Le
               pompage et les échanges frontaliers sont exclus. Le mix ne
-              représente donc pas directement l'électricité consommée.
+              représente donc pas directement l’électricité consommée.
             </p>
           </div>
           <div>
             <h3>Renouvelables</h3>
             <p>
               Éolien, solaire, hydraulique et bioénergies. La part est calculée
-              à partir de l'énergie produite ; le nucléaire participe au total
+              à partir de l’énergie produite ; le nucléaire participe au total
               mais pas aux renouvelables.
             </p>
           </div>
           <div>
             <h3>Intensité carbone</h3>
             <p>
-              Moyenne du taux RTE pondérée par la production horaire. Il s'agit
-              de l'indicateur d'émissions de production de RTE, pas d'une
-              analyse complète de cycle de vie ni d'une empreinte de
+              Moyenne du taux RTE pondérée par la production horaire. Il s’agit
+              de l’indicateur d’émissions de production de RTE, pas d’une
+              analyse complète de cycle de vie ni d’une empreinte de
               consommation.
             </p>
           </div>
@@ -1096,7 +1367,7 @@ function Methodology({ meta }) {
             <h3>Heure de Paris</h3>
             <p>
               Stockage et décalages du modèle en UTC, affichage Europe/Paris.
-              Les journées de changement d'heure comptent 23 ou 25 heures.
+              Les journées de changement d’heure comptent 23 ou 25 heures.
               Aucune interpolation de la consommation manquante.
             </p>
           </div>
@@ -1111,40 +1382,56 @@ function Methodology({ meta }) {
           </div>
         </div>
       </section>
-      <section className="panel reproducibility">
-        <div>
-          <p className="eyebrow">REPRODUCTIBILITÉ</p>
-          <h2>Du code aux mêmes résultats.</h2>
-          <p>
+      <section className="split repro-layout" aria-labelledby="repro-title">
+        <div className="panel">
+          <h2 className="section-title" id="repro-title">
+            Reproduire les résultats
+          </h2>
+          <p className="prose">
             Le dépôt contient le pipeline, les vues SQL, les tests, les
             paramètres du modèle et le manifeste de provenance.
           </p>
           <a
-            href="https://github.com/Badreddine05/gridpulse"
+            href={repoLink}
             target="_blank"
             rel="noreferrer"
             className="text-link"
           >
             Voir le dépôt GitHub
-            <ArrowUpRight size={16} />
+            <External />
           </a>
         </div>
-        <div className="code-block">
-          <span>python pipeline/build_dataset.py</span>
-          <span>python -m pytest tests/</span>
-          <span>npm ci && npm test && npm run build</span>
+        <div className="panel">
+          <pre className="code-block">
+            <code>
+              <span>python pipeline/build_dataset.py</span>
+              <span>python -m pytest tests/</span>
+              <span>npm ci && npm test && npm run build</span>
+            </code>
+          </pre>
         </div>
       </section>
       <p className="hash-note">
-        Empreinte du fichier source <code>{meta.source.sha256}</code>
+        Empreinte SHA-256 du fichier source <code>{meta.source.sha256}</code>
       </p>
       <p className="disclosure">
         Projet personnel de Badreddine Channoufi, réalisé avec assistance IA.
         Données RTE sous Licence Ouverte. Les dates des données décrivent la
-        période analysée, pas l'ancienneté du développement.
+        période analysée, pas l’ancienneté du développement.
       </p>
     </div>
   );
+}
+
+/* The tab row scrolls sideways on narrow phones: keep the active or focused
+   view, and its focus ring, inside the visible part of the row. */
+function revealTab(el) {
+  const bar = el?.parentElement;
+  if (!bar || bar.scrollWidth <= bar.clientWidth) return;
+  const b = bar.getBoundingClientRect(),
+    a = el.getBoundingClientRect();
+  if (a.left < b.left + 16) bar.scrollLeft += a.left - b.left - 16;
+  else if (a.right > b.right - 16) bar.scrollLeft += a.right - b.right + 16;
 }
 
 function App() {
@@ -1154,8 +1441,7 @@ function App() {
     [year, setYear] = useState(2024),
     [month, setMonth] = useState(12),
     [day, setDay] = useState("2024-12-11"),
-    [toast, setToast] = useState(false),
-    [menu, setMenu] = useState(false);
+    [toast, setToast] = useState(false);
   useEffect(() => {
     fetch(`${import.meta.env.BASE_URL}data/gridpulse.json`)
       .then((r) => {
@@ -1170,21 +1456,16 @@ function App() {
     () => selectRows(rows, year, month),
     [rows, year, month],
   );
-  const hero = useRef(null);
-  useEffect(() => {
-    if (raw && hero.current) {
-      const el = hero.current;
-      el.classList.remove("is-shown");
-      void el.offsetHeight;
-      el.classList.add("is-shown");
-    }
-  }, [raw]);
   useEffect(() => {
     if (toast) {
       const id = setTimeout(() => setToast(false), 3500);
       return () => clearTimeout(id);
     }
   }, [toast]);
+  const tabsRef = useRef(null);
+  useEffect(() => {
+    revealTab(tabsRef.current?.querySelector(".tab.active"));
+  }, [tab, raw]);
   function exportCsv() {
     const selected =
       tab === "forecast" ? rows.filter((r) => r.prediction != null) : selection;
@@ -1212,7 +1493,6 @@ function App() {
   };
   function navigate(value) {
     setTab(value);
-    setMenu(false);
     window.scrollTo({
       top: 0,
       behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -1223,241 +1503,175 @@ function App() {
   if (error)
     return (
       <div className="loading-screen">
-        <Zap size={32} />
-        <h1>Les données n'ont pas pu être chargées.</h1>
-        <p>{error}</p>
-        <button onClick={() => location.reload()}>Réessayer</button>
+        <GridPulseMark size={32} />
+        <h1>Les données n’ont pas pu être chargées.</h1>
+        <p className="loading-detail">{error}</p>
+        <button
+          type="button"
+          className="button button-primary"
+          onClick={() => location.reload()}
+        >
+          Réessayer
+        </button>
       </div>
     );
   if (!raw)
     return (
       <div className="loading-screen" role="status">
-        <Zap size={34} />
+        <GridPulseMark size={32} />
         <h1>GridPulse</h1>
-        <p>Chargement de l'instantané RTE…</p>
-        <div className="loading-track" />
+        <p>Chargement de l’instantané RTE…</p>
       </div>
     );
+  const heading = HEADINGS[tab];
+  const exportScope =
+    tab === "forecast"
+      ? "période de test, novembre et décembre 2024"
+      : `${monthName(month)} ${year}`;
   return (
     <div className="app">
       <a className="skip-link" href="#main">
         Aller au contenu
       </a>
-      <aside className={"sidebar " + (menu ? "open" : "")}>
-        <a
-          className="brand"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            navigate("overview");
-          }}
-          aria-label="GridPulse, accueil"
-        >
-          <span className="brand-icon">
-            <Zap size={21} fill="currentColor" />
-          </span>
-          <span>
-            grid<span className="brand-light">pulse</span>
-            <small>ENERGY INTELLIGENCE</small>
-          </span>
-        </a>
-        <button
-          className="mobile-close icon-button"
-          aria-label="Fermer le menu"
-          onClick={() => setMenu(false)}
-        >
-          <X />
-        </button>
-        <p className="nav-label">ESPACE D'EXPLORATION</p>
-        <nav aria-label="Navigation principale">
-          {[
-            ["overview", Activity, "Vue d’ensemble"],
-            ["forecast", ChartNoAxesCombined, "Prévisions"],
-            ["method", Database, "Données & méthode"],
-          ].map(([id, Icon, label]) => (
-            <button
-              key={id}
-              className={tab === id ? "active" : ""}
-              onClick={() => navigate(id)}
-              aria-current={tab === id ? "page" : undefined}
-            >
-              <Icon size={18} />
-              <span>{label}</span>
-              {tab === id ? <i /> : null}
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar-context">
-          <div className="france-mark">FR</div>
-          <div>
-            <strong>France métropolitaine</strong>
-            <span>Réseau électrique national</span>
-          </div>
-        </div>
-        <div className="sidebar-bottom">
-          <div className="dataset-badge">
-            <span className="status-dot" />
-            <span>INSTANTANÉ HISTORIQUE</span>
-          </div>
-          <p>
-            Janvier 2023 — décembre 2024
-            <br />
-            Données publiques RTE
-          </p>
-          <a
-            href="https://github.com/Badreddine05/gridpulse"
-            target="_blank"
-            rel="noreferrer"
-          >
-            <Github size={17} />
-            Code & documentation
-            <ArrowUpRight size={14} />
-          </a>
-          <div className="author">
-            <span>BC</span>
-            <div>
-              <strong>Badreddine Channoufi</strong>
-              <small>Data Engineering · MIAGE</small>
-            </div>
-          </div>
-        </div>
-      </aside>
-      {menu ? (
-        <button
-          className="menu-overlay"
-          aria-label="Fermer le menu"
-          onClick={() => setMenu(false)}
-        />
-      ) : null}
-      <div className="workspace">
-        <header className="topbar">
-          <div className="breadcrumb">
-            <button
-              className="mobile-menu icon-button"
-              aria-label="Ouvrir le menu"
-              onClick={() => setMenu(true)}
-            >
-              <Menu size={21} />
-            </button>
-            <span>Observatoire</span>
-            <ChevronRight size={13} />
-            <strong>
-              {tab === "overview"
-                ? "Vue d’ensemble"
-                : tab === "forecast"
-                  ? "Prévisions"
-                  : "Données & méthode"}
-            </strong>
-          </div>
-          <div className="topbar-right">
-            <span className="source-chip">
-              <span className="status-dot" />
-              RTE / éCO2mix
-            </span>
+      <header className="topbar">
+        <div className="container topbar-inner">
+          <div className="topbar-start">
             <a
-              href="https://badreddine05.github.io/"
-              className="portfolio-link"
+              className="brand"
+              href="./"
+              onClick={(e) => {
+                e.preventDefault();
+                navigate("overview");
+              }}
+              aria-label="GridPulse, accueil"
             >
-              Portfolio
-              <ArrowUpRight size={14} />
+              <GridPulseMark />
+              <span className="brand-name">GridPulse</span>
+            </a>
+            <a className="author-link" href="../">
+              Badreddine Channoufi
             </a>
           </div>
-        </header>
-        <main id="main">
-          <div className="page-heading">
-            <div ref={hero} className="t-stagger">
-              <p className="eyebrow t-stagger-line t-stagger-line--1">
-                OBSERVATOIRE DE L'ÉLECTRICITÉ FRANÇAISE
-              </p>
-              <h1 className="t-stagger-line t-stagger-line--2">
-                L'énergie, <span>en perspective.</span>
-              </h1>
-              <p className="page-description">
-                Comprendre le réseau. Explorer ses rythmes. Mesurer ce que l'on
-                peut prévoir.
-              </p>
-            </div>
-            <button className="export-button" onClick={exportCsv}>
-              <Download size={16} />
-              Exporter les données
-            </button>
-          </div>
-          {tab === "overview" ? (
-            <div className="toolbar">
-              <div className="section-label">
-                <span className="live-ring" /> LE RÉSEAU EN CHIFFRES
-                <span className="divider" />
-                <span className="historical-label">Exploration historique</span>
-              </div>
-              <div className="filters">
-                <label>
-                  <span className="sr-only">Année</span>
-                  <select
-                    aria-label="Année"
-                    value={year}
-                    onChange={(e) => changeYear(e.target.value)}
-                  >
-                    <option value="2023">2023</option>
-                    <option value="2024">2024</option>
-                  </select>
-                  <ChevronDown size={12} />
-                </label>
-                <label>
-                  <CalendarDays size={14} />
-                  <select
-                    aria-label="Mois"
-                    value={month}
-                    onChange={(e) => changeMonth(e.target.value)}
-                  >
-                    {MONTHS.map((m, i) => (
-                      <option value={i + 1} key={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown size={12} />
-                </label>
-              </div>
-            </div>
-          ) : null}
-          {tab === "overview" ? (
-            <Overview
-              rows={rows}
-              year={year}
-              month={month}
-              day={day}
-              setDay={setDay}
-              setMonth={setMonth}
-              setYear={setYear}
-              selection={selection}
-            />
-          ) : tab === "forecast" ? (
-            <Forecast rows={rows} meta={raw.meta} />
-          ) : (
-            <Methodology meta={raw.meta} />
-          )}
-          <footer>
-            <span>
-              GridPulse <span className="footer-dot">/</span> Projet personnel
-              de Badreddine Channoufi
-            </span>
-            <span>
-              Données : RTE · Licence Ouverte 2.0{" "}
-              <a
-                href={sourceLink}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Source des données RTE"
-              >
-                <ExternalLink size={12} />
+          <div className="topbar-end">
+            <nav className="topbar-links" aria-label="Liens du projet">
+              <a href="../projets/gridpulse/">Étude de cas</a>
+              <a href={repoLink} target="_blank" rel="noreferrer">
+                Code
+                <External />
               </a>
-            </span>
-          </footer>
-        </main>
-      </div>
+            </nav>
+            <ThemeButton />
+          </div>
+        </div>
+      </header>
+      <nav className="tabs" aria-label="Vues de l’application">
+        <div className="container tabs-inner" ref={tabsRef}>
+          {VIEWS.map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              className={"tab" + (tab === id ? " active" : "")}
+              onClick={() => navigate(id)}
+              onFocus={(e) => revealTab(e.currentTarget)}
+              aria-current={tab === id ? "page" : undefined}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </nav>
+      <main id="main" className="container" tabIndex={-1}>
+        <div className="page-head">
+          <div className="page-title">
+            <h1>{heading.title}</h1>
+            <p className="lead">{heading.lead}</p>
+          </div>
+          <button
+            type="button"
+            className="button button-secondary export-button"
+            onClick={exportCsv}
+            aria-label={`Exporter en CSV : ${exportScope}`}
+            title={`Exporter en CSV : ${exportScope}`}
+          >
+            <Download size={16} aria-hidden="true" />
+            Exporter en CSV
+          </button>
+        </div>
+        {tab === "overview" ? (
+          <div className="controls">
+            <label className="field">
+              <span className="field-label">Année</span>
+              <span className="select">
+                <select
+                  aria-label="Année"
+                  value={year}
+                  onChange={(e) => changeYear(e.target.value)}
+                >
+                  <option value="2023">2023</option>
+                  <option value="2024">2024</option>
+                </select>
+                <ChevronDown size={16} aria-hidden="true" />
+              </span>
+            </label>
+            <label className="field">
+              <span className="field-label">Mois</span>
+              <span className="select">
+                <select
+                  aria-label="Mois"
+                  value={month}
+                  onChange={(e) => changeMonth(e.target.value)}
+                >
+                  {MONTHS.map((m, i) => (
+                    <option value={i + 1} key={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={16} aria-hidden="true" />
+              </span>
+            </label>
+          </div>
+        ) : null}
+        {tab === "overview" ? (
+          <Overview
+            rows={rows}
+            year={year}
+            month={month}
+            day={day}
+            setDay={setDay}
+            setMonth={setMonth}
+            setYear={setYear}
+            selection={selection}
+          />
+        ) : tab === "forecast" ? (
+          <Forecast rows={rows} meta={raw.meta} />
+        ) : (
+          <Methodology meta={raw.meta} />
+        )}
+      </main>
+      <footer className="site-footer">
+        <div className="container footer-inner">
+          <p>
+            GridPulse · projet personnel de{" "}
+            <a href="../">Badreddine Channoufi</a>
+          </p>
+          <p>
+            Instantané historique 2023–2024 · données{" "}
+            <a href={sourceLink} target="_blank" rel="noreferrer">
+              RTE éCO2mix
+              <External />
+            </a>
+            ,{" "}
+            <a href={raw.meta.license_url} target="_blank" rel="noreferrer">
+              Licence Ouverte 2.0
+              <External />
+            </a>
+          </p>
+        </div>
+      </footer>
       {toast ? (
         <div className="toast" role="status">
-          <Check size={17} />
+          <Check size={16} aria-hidden="true" />
           Export CSV téléchargé
         </div>
       ) : null}
