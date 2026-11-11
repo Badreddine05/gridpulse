@@ -2487,6 +2487,9 @@ footer > span:last-child {
   .chart-container .axis-label {
     font-size: 23px;
   }
+  .chart-container .axis-unit {
+    display: none;
+  }
   .chart-container .demand-line {
     stroke-width: 4px;
   }

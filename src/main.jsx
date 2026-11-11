@@ -220,7 +220,7 @@ function Chart({
             </text>
           </g>
         ))}
-        <text x="8" y="12" className="axis-label">
+        <text x="8" y="12" className="axis-label axis-unit">
           GW
         </text>
         {xs.map((i, j) => (
