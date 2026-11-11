@@ -43,6 +43,7 @@ import {
   MONTHS,
   FUELS,
   fmt,
+  powerToGw as gw,
   avg,
   decodeData,
   selectRows,
@@ -65,7 +66,6 @@ const shortDate = (date) =>
     month: "short",
     timeZone: "UTC",
   }).format(new Date(date + "T12:00:00Z"));
-const gw = (value) => (Number.isFinite(value) ? value / 1000 : null);
 const sourceLink =
   "https://odre.opendatasoft.com/explore/dataset/eco2mix-national-cons-def/";
 
@@ -313,6 +313,22 @@ function Chart({
 function Mix({ rows, caption }) {
   const sum = summary(rows),
     fuels = sum.fuels;
+  if (!sum.productionHours) {
+    return (
+      <section className="panel mix-missing">
+        <p className="eyebrow">PRODUCTION</p>
+        <h2>Le mix électrique</h2>
+        <div className="empty">
+          <div>
+            <Info size={24} />
+            <p>Mesures absentes pour cette heure.</p>
+            <small>Le mix n'est pas calculé sans données complètes.</small>
+          </div>
+        </div>
+        <p className="panel-note">{caption}</p>
+      </section>
+    );
+  }
   let accumulated = 0;
   return (
     <section className="panel mix-panel">

@@ -41,6 +41,8 @@ export const fmt = (value, decimals = 0) =>
         maximumFractionDigits: decimals,
         minimumFractionDigits: decimals,
       }).format(value);
+export const powerToGw = (value) =>
+  Number.isFinite(value) ? value / 1000 : null;
 export const avg = (values) => {
   const finite = values.filter(Number.isFinite);
   return finite.length

@@ -8,7 +8,16 @@ import {
   csvForRows,
   decodeData,
   selectRows,
+  powerToGw,
 } from "../src/data.mjs";
+
+test("unit conversion preserves missing observations instead of showing zero", () => {
+  assert.equal(powerToGw(null), null);
+  assert.equal(powerToGw(undefined), null);
+  assert.equal(powerToGw(NaN), null);
+  assert.equal(powerToGw(0), 0);
+  assert.equal(powerToGw(45000), 45);
+});
 
 const row = (extra = {}) => ({
   consommation: 1000,
