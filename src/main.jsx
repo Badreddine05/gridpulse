@@ -63,7 +63,7 @@ const VIEWS = [
 ];
 const HEADINGS = {
   overview: {
-    title: "Consommation et production d’électricité, France, 2023–2024",
+    title: "Consommation et production d’électricité, France, 2023 et 2024",
     lead: "Moyennes horaires publiées par RTE (éCO2mix), de janvier 2023 à décembre 2024. Il s’agit d’un instantané historique : les valeurs ne sont pas mises à jour en direct.",
   },
   forecast: {
@@ -1222,7 +1222,7 @@ function Methodology({ meta }) {
       <div className="split method-layout">
         <section className="panel source-panel" aria-labelledby="source-title">
           <h2 className="section-title" id="source-title">
-            RTE éCO2mix, France, 2023–2024
+            RTE éCO2mix, France, 2023 et 2024
           </h2>
           <p className="prose">
             Consommation, production par filière et estimation des émissions de
