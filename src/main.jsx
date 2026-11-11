@@ -216,7 +216,7 @@ function Chart({
               textAnchor="end"
               className="axis-label"
             >
-              {fmt(t / 1000)}
+              {fmt(t / 1000, Number.isInteger(t / 1000) ? 0 : 1)}
             </text>
           </g>
         ))}

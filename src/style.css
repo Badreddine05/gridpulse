@@ -2483,3 +2483,18 @@ footer > span:last-child {
     transition: none !important;
   }
 }
+@media (max-width: 600px) {
+  .chart-container .axis-label {
+    font-size: 23px;
+  }
+  .chart-container .demand-line {
+    stroke-width: 4px;
+  }
+  .chart-container .forecast-line {
+    stroke-width: 3px;
+  }
+  .mix-missing .empty {
+    text-align: center;
+    line-height: 1.8;
+  }
+}
